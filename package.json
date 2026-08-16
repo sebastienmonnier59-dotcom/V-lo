@@ -14,7 +14,8 @@
     "smoke": "node scripts/smoke-web.mjs",
     "serve": "python3 -m http.server 8777 --directory web",
     "vendor": "cp node_modules/maplibre-gl/dist/maplibre-gl.js node_modules/maplibre-gl/dist/maplibre-gl.css web/vendor/",
-    "enrich:france": "node scripts/enrich-france.mjs"
+    "enrich:france": "node scripts/enrich-france.mjs",
+    "gaps": "node scripts/gap-analysis.mjs"
   },
   "devDependencies": {
     "maplibre-gl": "4.7.1",
