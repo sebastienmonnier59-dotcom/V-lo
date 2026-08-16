@@ -328,7 +328,53 @@ function run() {
   state.lastRun = { result, kept, budget };
   state.selected = null;
   setPath([]);
+  writeHash();
   renderResults();
+}
+
+/**
+ * L'état tient dans l'URL : un plan se partage, se met en favori et survit
+ * au rechargement. C'est la moitié du côté « pratique » d'un site de sortie.
+ */
+function writeHash() {
+  if (!state.station) return;
+  const params = new URLSearchParams({
+    g: state.station.id,
+    km: String(state.maxKm),
+    m: state.mode,
+    s: state.surface,
+  });
+  if (state.greenOnly) params.set('vv', '1');
+  if (!state.openOnly) params.set('tout', '1');
+  if (state.selected) params.set('vers', state.selected.entry.station.id);
+  const hash = `#${params}`;
+  if (location.hash !== hash) history.replaceState(null, '', hash);
+}
+
+function readHash() {
+  const params = new URLSearchParams(location.hash.slice(1));
+  const station = state.stations.find((x) => x.id === params.get('g'));
+  if (!station) return null;
+  const maxKm = Number(params.get('km'));
+  if (Number.isFinite(maxKm) && maxKm >= 5 && maxKm <= 150) state.maxKm = maxKm;
+  if (['oneway', 'roundtrip'].includes(params.get('m'))) state.mode = params.get('m');
+  if (['any', 'ridable', 'smooth'].includes(params.get('s'))) state.surface = params.get('s');
+  state.greenOnly = params.get('vv') === '1';
+  state.openOnly = params.get('tout') !== '1';
+  return { station, target: params.get('vers') };
+}
+
+/** Aligne les contrôles du panneau sur l'état courant. */
+function syncControls() {
+  $('maxkm').value = state.maxKm;
+  $('maxkm-out').textContent = `${state.maxKm} km`;
+  $('green-only').checked = state.greenOnly;
+  $('open-only').checked = state.openOnly;
+  for (const [id, value] of [['surface', state.surface], ['mode', state.mode]]) {
+    $(id)
+      .querySelectorAll('button')
+      .forEach((b) => b.classList.toggle('on', b.dataset.value === value));
+  }
 }
 
 /** Remet les géométries bout à bout dans le sens de la marche. */
@@ -364,6 +410,7 @@ function selectDestination(entry) {
   const summary = describePath(edges, state.graph, state.segments);
   state.selected = { entry, edges, coords, summary };
   setPath(coords);
+  writeHash();
 
   withMap(() => {
     const lons = coords.map((c) => c[0]);
@@ -536,6 +583,27 @@ function renderDetail() {
   });
 }
 
+/**
+ * Filtrer sur le revêtement écarte aussi tout ce qui n'est pas renseigné.
+ * Le taux de couverture doit donc être visible : sans lui, on ne distingue
+ * pas « il n'y a rien de lisse ici » de « on ne sait pas ».
+ */
+function renderSurfaceHint() {
+  const totals = new Map();
+  for (const p of state.segments) {
+    const entry = totals.get(p.c) ?? { total: 0, known: 0 };
+    entry.total += p.l;
+    if (p.sf) entry.known += p.l;
+    totals.set(p.c, entry);
+  }
+  const parts = [...totals.entries()]
+    .filter(([, v]) => v.total > 0)
+    .map(([country, v]) => `${pct(v.known, v.total)} % du réseau ${country === 'BE' ? 'wallon' : 'français'}`);
+  $('surface-hint').textContent = parts.length
+    ? `Revêtement renseigné sur ${parts.join(' et ')}. Le reste est écarté par ces filtres.`
+    : '';
+}
+
 function renderLegend() {
   const rows =
     state.colorMode === 'surface'
@@ -648,21 +716,13 @@ function applyParsed(parsed) {
   // gare d'abord relancerait le trajet avec la distance et les filtres précédents.
   if (parsed.maxKm) {
     state.maxKm = Math.min(150, Math.max(5, Math.round(parsed.maxKm / 5) * 5));
-    $('maxkm').value = state.maxKm;
-    $('maxkm-out').textContent = `${state.maxKm} km`;
   }
   state.surface = parsed.surface;
   state.greenOnly = parsed.greenOnly;
   state.openOnly = parsed.openOnly;
   state.mode = parsed.mode;
 
-  $('green-only').checked = parsed.greenOnly;
-  $('open-only').checked = parsed.openOnly;
-  for (const [id, value] of [['surface', parsed.surface], ['mode', parsed.mode]]) {
-    $(id)
-      .querySelectorAll('button')
-      .forEach((b) => b.classList.toggle('on', b.dataset.value === value));
-  }
+  syncControls();
 
   const box = $('nlq-understood');
   box.innerHTML = parsed.explain.map((e) => `<span class="chip">${escapeHtml(e.label)}</span>`).join('');
@@ -800,9 +860,20 @@ async function boot() {
 
   wireControls();
   renderLegend();
+  renderSurfaceHint();
   renderRoutes();
   renderAbout();
-  renderResults();
+
+  // Un lien partagé rejoue le plan complet : gare, filtres et destination.
+  const restored = readHash();
+  if (restored) {
+    syncControls();
+    selectStation(restored.station);
+    const target = state.reachable.find((r) => r.station.id === restored.target);
+    if (target) selectDestination(target);
+  } else {
+    renderResults();
+  }
 }
 
 boot().catch((err) => {
