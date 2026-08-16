@@ -1,0 +1,22 @@
+{
+  "name": "v-lo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Le RAVeL wallon et les véloroutes françaises, rendus utilisables : départ en gare, distance réelle sur le réseau, revêtement, tronçons vraiment ouverts.",
+  "scripts": {
+    "fetch:ravel": "node scripts/fetch-ravel.mjs",
+    "fetch:france": "node scripts/fetch-france.mjs",
+    "fetch:stations": "node scripts/fetch-stations.mjs",
+    "fetch": "npm run fetch:ravel && npm run fetch:stations && npm run fetch:france",
+    "build": "node scripts/build-index.mjs",
+    "check": "node scripts/check-routing.mjs",
+    "smoke": "node scripts/smoke-web.mjs",
+    "serve": "python3 -m http.server 8777 --directory web",
+    "vendor": "cp node_modules/maplibre-gl/dist/maplibre-gl.js node_modules/maplibre-gl/dist/maplibre-gl.css web/vendor/"
+  },
+  "devDependencies": {
+    "maplibre-gl": "4.7.1",
+    "playwright": "1.49.1"
+  }
+}
