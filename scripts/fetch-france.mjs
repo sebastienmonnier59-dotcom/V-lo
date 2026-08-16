@@ -33,7 +33,7 @@ let mirrorIndex = 0;
 
 async function overpass(query, label) {
   let wait = 3000;
-  for (let attempt = 0; attempt < MIRRORS.length * 3; attempt++) {
+  for (let attempt = 0; attempt < MIRRORS.length * 2; attempt++) {
     const mirror = MIRRORS[mirrorIndex % MIRRORS.length];
     mirrorIndex++;
     try {
@@ -105,25 +105,34 @@ function kindOf(tags = {}) {
 function stitch(parts) {
   const lines = [];
   let current = null;
+  let currentWays = null;
   const same = (a, b) => a[0] === b[0] && a[1] === b[1];
 
-  for (const coords of parts) {
+  const flush = () => {
+    if (current) lines.push({ coords: current, ways: currentWays });
+  };
+
+  for (const { coords, way } of parts) {
     if (!current) {
       current = coords.slice();
+      currentWays = [way];
       continue;
     }
     const tail = current[current.length - 1];
     if (same(tail, coords[0])) {
       current.push(...coords.slice(1));
+      currentWays.push(way);
     } else if (same(tail, coords[coords.length - 1])) {
       // Le way suivant est décrit dans le sens inverse : on le retourne.
       current.push(...coords.slice(0, -1).reverse());
+      currentWays.push(way);
     } else {
-      lines.push(current);
+      flush();
       current = coords.slice();
+      currentWays = [way];
     }
   }
-  if (current) lines.push(current);
+  flush();
   return lines;
 }
 
@@ -140,12 +149,14 @@ function normalizeRelation(rel, seenWays) {
     const coords = member.geometry
       .filter((p) => p && typeof p.lon === 'number')
       .map((p) => [p.lon, p.lat]);
-    if (coords.length >= 2) parts.push(coords);
+    if (coords.length >= 2) parts.push({ coords, way: member.ref });
   }
 
-  // `out geom` sur une relation ne renvoie pas les tags des ways membres :
-  // la surface vient donc de la relation quand elle est renseignée, sinon null.
-  return stitch(parts).map((coords, part) => ({
+  // `out geom` sur une relation ne renvoie pas les tags des ways membres : la
+  // surface vient de la relation quand elle y figure, ce qui est rare. Les
+  // identifiants des ways sont conservés pour que `enrich-france.mjs` puisse
+  // aller chercher leurs tags dans une seconde passe, bien plus légère.
+  return stitch(parts).map(({ coords, ways }, part) => ({
     type: 'Feature',
     properties: {
       id: `fr-${rel.id}-${part}`,
@@ -167,6 +178,7 @@ function normalizeRelation(rel, seenWays) {
       oneway: false,
       width: null,
       website: t.website || null,
+      ways,
       len: Math.round(lineLength(coords)),
     },
     geometry: { type: 'LineString', coordinates: roundCoords(simplify(coords, 8)) },
@@ -192,15 +204,39 @@ async function listRelations() {
   return ids;
 }
 
-async function fetchBatch(ids, index) {
-  const cached = new URL(`france-batch-${index}.json`, CACHE);
+/**
+ * Récupère un lot, en le coupant en deux s'il résiste.
+ *
+ * Overpass échoue par manque de mémoire ou de temps, pas au hasard : les lots
+ * qui contiennent un itinéraire très long (une EuroVelo entière) échouent
+ * systématiquement, quel que soit le miroir. Insister ne sert à rien, diviser si.
+ */
+async function fetchBatch(ids, key) {
+  const cached = new URL(`france-batch-${key}.json`, CACHE);
   if (existsSync(cached)) return JSON.parse(await readFile(cached, 'utf8'));
-  const data = await overpass(
-    `[out:json][timeout:280];rel(id:${ids.join(',')});out geom;`,
-    `lot ${index}`,
-  );
-  await writeFile(cached, JSON.stringify(data.elements ?? []));
-  return data.elements ?? [];
+
+  try {
+    const data = await overpass(
+      `[out:json][timeout:280];rel(id:${ids.join(',')});out geom;`,
+      `lot ${key}`,
+    );
+    await writeFile(cached, JSON.stringify(data.elements));
+    return data.elements;
+  } catch (err) {
+    if (ids.length === 1) {
+      // Un itinéraire seul qui ne passe toujours pas : on le note et on avance,
+      // plutôt que de bloquer les 700 autres.
+      console.warn(`  ! itinéraire ${ids[0]} abandonné — ${err.message}`);
+      await writeFile(cached, JSON.stringify([]));
+      return [];
+    }
+    const half = Math.ceil(ids.length / 2);
+    console.warn(`  ! lot ${key} coupé en deux (${ids.length} itinéraires)`);
+    return [
+      ...(await fetchBatch(ids.slice(0, half), `${key}a`)),
+      ...(await fetchBatch(ids.slice(half), `${key}b`)),
+    ];
+  }
 }
 
 async function main() {
@@ -216,19 +252,20 @@ async function main() {
 
   const features = [];
   const seenWays = new Set();
+  const output = new URL('france-routes.geojson', RAW);
+
   for (const [i, batch] of batches.entries()) {
-    const elements = await fetchBatch(batch, i);
+    const elements = await fetchBatch(batch, String(i));
     for (const rel of elements) {
       if (rel.type === 'relation') features.push(...normalizeRelation(rel, seenWays));
     }
     const km = features.reduce((s, f) => s + f.properties.len, 0) / 1000;
     console.log(`  lot ${i + 1}/${batches.length} — ${features.length} tronçons, ${km.toFixed(0)} km`);
+    // Écriture après chaque lot : la collecte dure des heures et Overpass est
+    // capricieux. On veut pouvoir construire le site avec ce qui est déjà là.
+    await writeFile(output, JSON.stringify({ type: 'FeatureCollection', features }));
   }
 
-  await writeFile(
-    new URL('france-routes.geojson', RAW),
-    JSON.stringify({ type: 'FeatureCollection', features }),
-  );
   console.log(`  écrit data/raw/france-routes.geojson (${features.length} tronçons)`);
 }
 

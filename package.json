@@ -8,12 +8,13 @@
     "fetch:ravel": "node scripts/fetch-ravel.mjs",
     "fetch:france": "node scripts/fetch-france.mjs",
     "fetch:stations": "node scripts/fetch-stations.mjs",
-    "fetch": "npm run fetch:ravel && npm run fetch:stations && npm run fetch:france",
+    "fetch": "npm run fetch:ravel && npm run fetch:stations && npm run fetch:france && npm run enrich:france",
     "build": "node scripts/build-index.mjs",
     "check": "node scripts/check-routing.mjs",
     "smoke": "node scripts/smoke-web.mjs",
     "serve": "python3 -m http.server 8777 --directory web",
-    "vendor": "cp node_modules/maplibre-gl/dist/maplibre-gl.js node_modules/maplibre-gl/dist/maplibre-gl.css web/vendor/"
+    "vendor": "cp node_modules/maplibre-gl/dist/maplibre-gl.js node_modules/maplibre-gl/dist/maplibre-gl.css web/vendor/",
+    "enrich:france": "node scripts/enrich-france.mjs"
   },
   "devDependencies": {
     "maplibre-gl": "4.7.1",
