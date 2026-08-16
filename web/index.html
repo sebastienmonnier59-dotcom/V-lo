@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>V-lo — le RAVeL et les véloroutes, en pratique</title>
+    <meta
+      name="description"
+      content="Planifier une sortie à vélo depuis une gare sur le RAVeL wallon et les véloroutes françaises : distance réelle sur le réseau, revêtement, tronçons vraiment ouverts, export GPX."
+    />
+    <link rel="stylesheet" href="vendor/maplibre-gl.css" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <aside id="panel">
+        <header id="brand">
+          <h1>V-lo</h1>
+          <p id="tagline">Le RAVeL et les véloroutes, en pratique</p>
+        </header>
+
+        <section id="ask">
+          <label for="nlq" class="sr-only">Décrivez votre sortie</label>
+          <textarea
+            id="nlq"
+            rows="2"
+            placeholder="Depuis Namur, 40 km de voie verte lisse, retour en train…"
+            autocomplete="off"
+          ></textarea>
+          <div id="nlq-examples"></div>
+          <div id="nlq-understood" hidden></div>
+        </section>
+
+        <nav id="tabs" role="tablist">
+          <button role="tab" data-tab="plan" aria-selected="true">Planifier</button>
+          <button role="tab" data-tab="explore" aria-selected="false">Explorer</button>
+          <button role="tab" data-tab="about" aria-selected="false">Données</button>
+        </nav>
+
+        <div id="tab-plan" class="tab" role="tabpanel">
+          <div class="field">
+            <label for="station">Gare de départ</label>
+            <input id="station" list="station-list" placeholder="Chercher une gare…" autocomplete="off" />
+            <datalist id="station-list"></datalist>
+            <p id="station-hint" class="hint"></p>
+          </div>
+
+          <div class="field">
+            <label for="maxkm">Distance à vélo <output id="maxkm-out">40 km</output></label>
+            <input id="maxkm" type="range" min="5" max="150" step="5" value="40" />
+          </div>
+
+          <div class="field">
+            <span class="label">Trajet</span>
+            <div class="segmented" id="mode">
+              <button data-value="oneway" class="on">Gare à gare</button>
+              <button data-value="roundtrip">Aller-retour</button>
+            </div>
+            <p class="hint" id="mode-hint">Retour en train depuis une autre gare.</p>
+          </div>
+
+          <div class="field">
+            <span class="label">Revêtement accepté</span>
+            <div class="segmented" id="surface">
+              <button data-value="any" class="on">Tout</button>
+              <button data-value="ridable">Confortable</button>
+              <button data-value="smooth">Lisse</button>
+            </div>
+          </div>
+
+          <div class="field checks">
+            <label><input type="checkbox" id="green-only" /> Site propre uniquement (RAVeL / voie verte)</label>
+            <label><input type="checkbox" id="open-only" checked /> Tronçons réellement ouverts</label>
+          </div>
+
+          <div id="results"></div>
+        </div>
+
+        <div id="tab-explore" class="tab" role="tabpanel" hidden>
+          <div class="field">
+            <span class="label">Couleur des tracés</span>
+            <div class="segmented" id="colormode">
+              <button data-value="status" class="on">État</button>
+              <button data-value="surface">Revêtement</button>
+            </div>
+          </div>
+          <div id="legend"></div>
+          <div class="field">
+            <label for="route-filter">Itinéraires</label>
+            <input id="route-filter" placeholder="V80, Ravel Ourthe, EuroVelo…" autocomplete="off" />
+          </div>
+          <div id="route-list"></div>
+        </div>
+
+        <div id="tab-about" class="tab" role="tabpanel" hidden>
+          <div id="about-body"></div>
+        </div>
+      </aside>
+
+      <main id="map-wrap">
+        <div id="map"></div>
+        <div id="basemap-switch" class="segmented floating">
+          <button data-value="sobre" class="on">Sobre</button>
+          <button data-value="cyclo">Vélo</button>
+        </div>
+        <div id="loading">Chargement du réseau…</div>
+      </main>
+    </div>
+
+    <script src="vendor/maplibre-gl.js"></script>
+    <script type="module" src="js/app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,9 @@
+node_modules/
+
+# Données brutes et cache de collecte : régénérables via `npm run fetch`.
+# La barre initiale limite la règle à la racine — web/data/, servi par le site,
+# reste versionné.
+/data/
+
+# Captures produites par le test de fumée
+shot-*.png
