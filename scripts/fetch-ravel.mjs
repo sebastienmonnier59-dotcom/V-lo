@@ -8,7 +8,7 @@
  * Sortie : data/raw/ravel-segments.geojson (schéma normalisé V-lo)
  */
 import { writeFile, mkdir } from 'node:fs/promises';
-import { fetchRetry, lineLength, simplify, roundCoords } from './lib/util.mjs';
+import { fetchRetry, lineLength, simplify, roundCoords, clean } from './lib/util.mjs';
 
 const BASE =
   'https://geoservices.wallonie.be/arcgis/rest/services/MOBILITE/RAVEL_VELOROUTES/MapServer';
@@ -61,7 +61,9 @@ async function queryPage(offset) {
 }
 
 function normalize(feature, i) {
-  const p = feature.properties ?? {};
+  // Les champs texte du service passent par `clean` : certains valent " ".
+  const raw = feature.properties ?? {};
+  const p = Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, clean(v)]));
   const geom = feature.geometry;
   if (!geom) return null;
 

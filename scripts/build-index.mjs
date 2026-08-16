@@ -11,7 +11,7 @@
  */
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { haversine, lineLength } from './lib/util.mjs';
+import { haversine, lineLength, clean } from './lib/util.mjs';
 
 const RAW = new URL('../data/raw/', import.meta.url);
 const OUT = new URL('../web/data/', import.meta.url);
@@ -264,7 +264,9 @@ function buildRouteIndex(features) {
   const byKey = new Map();
   for (const f of features) {
     const p = f.properties;
-    const key = p.ref || p.name;
+    // Deuxième filet après `clean` côté collecte : un identifiant vide ne doit
+    // jamais devenir une clé de regroupement.
+    const key = clean(p.ref) || clean(p.name);
     if (!key) continue;
     let r = byKey.get(key);
     if (!r) {

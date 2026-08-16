@@ -102,3 +102,15 @@ export function roundCoords(coords, decimals = 5) {
 export function fmtKm(meters) {
   return `${(meters / 1000).toFixed(1)} km`;
 }
+
+/**
+ * Normalise un champ texte venu d'une base tierce.
+ * Les exports du SPW contiennent des chaînes réduites à une espace : sans ce
+ * nettoyage, elles passent pour des valeurs et agrègent 1 444 tronçons sans
+ * rapport sous un même « itinéraire ».
+ */
+export function clean(value) {
+  if (typeof value !== 'string') return value ?? null;
+  const trimmed = value.trim();
+  return trimmed === '' ? null : trimmed;
+}

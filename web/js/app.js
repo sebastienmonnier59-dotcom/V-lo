@@ -112,6 +112,8 @@ function lineColorExpression() {
   ];
 }
 
+const NETWORK_LAYERS = ['network-open', 'network-todo'];
+
 function addNetworkLayers() {
   map.addSource('network', { type: 'geojson', data: { type: 'FeatureCollection', features: state.features } });
   map.addSource('path', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
@@ -129,20 +131,8 @@ function addNetworkLayers() {
     layout: { 'line-cap': 'round', 'line-join': 'round' },
   });
 
-  map.addLayer({
-    id: 'network',
-    type: 'line',
-    source: 'network',
-    paint: {
-      'line-color': lineColorExpression(),
-      // Ce qui n'est pas ouvert se voit, mais ne se confond jamais avec le roulable.
-      'line-opacity': ['case', ['==', ['get', 's'], 'open'], 0.95, 0.55],
-      'line-width': ['interpolate', ['linear'], ['zoom'], 7, 1.1, 12, 3.2, 16, 6],
-      'line-dasharray': ['case', ['==', ['get', 's'], 'open'], ['literal', [1, 0]], ['literal', [2, 1.6]]],
-    },
-    layout: { 'line-cap': 'round', 'line-join': 'round' },
-  });
-
+  // Le trait de l'itinéraire passe sous le réseau : il l'entoure d'un halo blanc
+  // sans masquer la couleur qui dit l'état et le revêtement du tronçon.
   map.addLayer({
     id: 'path',
     type: 'line',
@@ -154,7 +144,36 @@ function addNetworkLayers() {
     },
     layout: { 'line-cap': 'round', 'line-join': 'round' },
   });
-  map.moveLayer('path', 'network');
+
+  // `line-dasharray` n'accepte pas d'expression liée aux données : ouvert et
+  // non-ouvert sont donc deux couches, filtrées sur le même jeu de tronçons.
+  // Ce qui n'est pas ouvert reste visible, mais ne se confond jamais avec le roulable.
+  map.addLayer({
+    id: 'network-open',
+    type: 'line',
+    source: 'network',
+    filter: ['==', ['get', 's'], 'open'],
+    paint: {
+      'line-color': lineColorExpression(),
+      'line-opacity': 0.95,
+      'line-width': ['interpolate', ['linear'], ['zoom'], 7, 1.1, 12, 3.2, 16, 6],
+    },
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+  });
+
+  map.addLayer({
+    id: 'network-todo',
+    type: 'line',
+    source: 'network',
+    filter: ['!=', ['get', 's'], 'open'],
+    paint: {
+      'line-color': lineColorExpression(),
+      'line-opacity': 0.6,
+      'line-width': ['interpolate', ['linear'], ['zoom'], 7, 1, 12, 2.6, 16, 4.5],
+      'line-dasharray': [2, 1.8],
+    },
+    layout: { 'line-cap': 'butt', 'line-join': 'round' },
+  });
 
   map.addLayer({
     id: 'stations',
@@ -168,13 +187,13 @@ function addNetworkLayers() {
     },
   });
 
-  map.on('click', 'network', (e) => showSegmentPopup(e));
+  for (const layer of NETWORK_LAYERS) map.on('click', layer, (e) => showSegmentPopup(e));
   map.on('click', 'stations', (e) => {
     const name = e.features[0].properties.name;
     const found = state.stations.find((s) => s.name === name);
     if (found) selectStation(found);
   });
-  for (const layer of ['network', 'stations']) {
+  for (const layer of [...NETWORK_LAYERS, 'stations']) {
     map.on('mouseenter', layer, () => (map.getCanvas().style.cursor = 'pointer'));
     map.on('mouseleave', layer, () => (map.getCanvas().style.cursor = ''));
   }
@@ -699,21 +718,18 @@ function wireControls() {
   });
   wireSegmented('colormode', (v) => {
     state.colorMode = v;
-    withMap(() => map.setPaintProperty('network', 'line-color', lineColorExpression()));
+    withMap(() => {
+      for (const layer of NETWORK_LAYERS) {
+        map.setPaintProperty(layer, 'line-color', lineColorExpression());
+      }
+    });
     renderLegend();
   });
   wireSegmented('basemap-switch', (v) => {
     withMap(() => {
-      const center = map.getCenter();
-      const zoom = map.getZoom();
       mapReady = false;
+      // setStyle conserve le cadrage ; `style.load` repose les couches.
       map.setStyle(styleFor(v));
-      map.once('styledata', () => {
-        addNetworkLayers();
-        mapReady = true;
-        map.jumpTo({ center, zoom });
-        if (state.selected) setPath(state.selected.coords);
-      });
     });
   });
 
@@ -770,16 +786,16 @@ async function boot() {
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
   map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
 
-  map.on('load', () => {
+  // `style.load` plutôt que `load` : ce dernier attend la première fournée de
+  // tuiles, et n'arrive donc jamais si le fond de carte est lent ou injoignable.
+  // Le réseau, lui, est déjà en mémoire et n'a aucune raison d'attendre.
+  // L'évènement se redéclenche à chaque changement de fond : les couches sont
+  // reposées et l'état courant réappliqué au même endroit.
+  map.on('style.load', () => {
     addNetworkLayers();
     mapReady = true;
     $('loading').hidden = true;
-    if (state.station) withMap(() => map.getSource('stations').setData(stationsGeoJSON()));
     if (state.selected) setPath(state.selected.coords);
-  });
-  // Un fond de carte injoignable ne doit pas masquer le panneau de planification.
-  map.on('error', () => {
-    $('loading').hidden = true;
   });
 
   wireControls();
